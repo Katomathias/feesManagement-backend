@@ -7,7 +7,7 @@ admin.site.register([
  Levels,
  AmountPaid,
  PasswordResets,
- UserProfile
- 
+ UserProfile,
+ Content
 ])
 #REGISTER THE MODELS 

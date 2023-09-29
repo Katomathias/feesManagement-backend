@@ -1,3 +1,4 @@
+from django.shortcuts import render
 from rest_framework.decorators import api_view,permission_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -11,6 +12,10 @@ from knox.auth import AuthToken
 import random
 import uuid 
 from django.db.models import Sum
+from django.http import JsonResponse
+from django.db.models import Count
+from rest_framework.authtoken.models import Token
+
 
 
 
@@ -20,6 +25,7 @@ def homepage(request):
 	"computers":"/computers"
 }
 	return Response(res, status.HTTP_200_OK)
+
 
 @api_view(['GET'])
 def stats_view(request, *args, **kwargs):
@@ -173,6 +179,68 @@ def user_profile_detail(request, slug):
             "message":"update successfull"
         }
         return Response(msg, status=status.HTTP_202_ACCEPTED)
+    
+@api_view(['POST'])
+def register(request):
+    if request.method == 'POST':
+        username = request.data.get('username')
+        password = request.data.get('password')
+        email = request.data.get('email')
+
+        if not username or not password or not email:
+            return Response({"error": "Please provide username, password, and email."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if User.objects.filter(username=username).exists():
+            return Response({"error": "Username already taken."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.create_user(username=username, password=password, email=email)
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({
+            'user_info': {
+                'id': user.id,
+                'email': user.email,
+                'fullname': user.get_full_name()
+            },
+            'token': token.key
+        }, status=status.HTTP_201_CREATED)
+    
+@api_view(['POST'])
+def add_student(request):
+    if request.method =='POST':
+        student_name = request.data['name']
+        student_number = request.data['student_number']
+        student_nationality = request.data['nationality']
+        student_gender = request.data['gender']
+        student = Students(name=student_name, student_number=student_number, nationality=student_nationality, gender=student_gender)
+        student.save()
+        return JsonResponse({'success':True}) 
+    
+@api_view(['POST'])
+def add_payment(request):
+    if request.method == 'POST':
+        name = request.data['name']
+        amount = request.data['amount']
+        level_name = request.data['level']  # Assuming you have 'level' field in your request data
+
+        # Retrieve the student instance (replace student_id with actual value)
+        student_instance = Students.objects.get(id=name)
+
+        # Retrieve the level instance based on the level_name from request data
+        level_instance = Levels.objects.get(name=level_name)
+
+        # Create the AmountPaid instance with the correct student and level instances
+        student_payment = AmountPaid(student=student_instance, level=level_instance, amount=amount)
+        student_payment.save()
+
+        return JsonResponse({'success': True})
+
+    
+@api_view(['DELETE'])
+def delete_student(request, slug):
+    if request.method == 'DELETE':
+        student = Students.objects.get(id=slug)
+        student.delete()
+        return JsonResponse({'success':True})
 
 @api_view(['GET','POST'])
 def payments(request, *args, **kwargs):
@@ -248,9 +316,57 @@ def payment_detail(request, slug):
     elif request.method == 'DELETE':
         payment_effected.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    
+    
+    #Views for Graphs are under here
+    
+def get_item_count(request):
+    male_no = Students.objects.filter(gender='MALE').count()
+    male_no=int(male_no)
+    female_no = Students.objects.filter(gender='FEMALE').count()
+    female_no=int(female_no)
+    gender_list= ['MALE', 'FEMALE']
+    gender_number=[male_no, female_no]
+    context={' gender_list': gender_list, 'gender_number':gender_number}
+    return JsonResponse({'male_no':  male_no,'female_no':  female_no, ' gender_list': gender_list, 'gender_number':gender_number })
+
+def get_nationality_counts(request):
+    nationality_counts = Students.objects.values('nationality').annotate(count=Count('id'))
+    data = {
+        'nationalities': [entry['nationality'] for entry in nationality_counts],
+        'counts': [entry['count'] for entry in nationality_counts],
+    }
+    return JsonResponse(data)
+
+def get_amount_by_levels(request):
+    amount_by_levels = AmountPaid.objects.values('level__name').annotate(total_amount=Sum('amount'))
+    data = {
+        'levels': [entry['level__name'] for entry in amount_by_levels],
+        'amounts': [entry['total_amount'] for entry in amount_by_levels],
+    }
+    return JsonResponse(data)
+    
+
 
 # Create your views here.
+
 """
+def studentsView(request):
+    male_no=UserProfile.objects.filter(gender='MALE').count()
+    male_no=int(male_no)
+    print('Number of male students is', male_no)
+    
+    female_no=UserProfile.objects.filter(gender='FEMALE').count()
+    female_no=int(female_no)
+    print('Number of female students is', female_no)
+    
+    gender_list= ['MALE', 'FEMALE']
+    gender_number=[male_no, female_no]
+    
+    context={' gender_list': gender_list, 'gender_number':gender_number}
+    return render(request,context)
+    
 @api_view(['GET'])
 def homepage(request):
 	res={
